@@ -4,8 +4,8 @@ from datetime import datetime
 import pybcv  # <--- Librería para la tasa oficial
 
 # --- INICIO DEL PROGRAMA ---
-st.set_page_config(page_title="Iglesia - Gestión", layout="wide")
-bcv = pybcv.PyBCV()
+st.set_page_config(page_title="Iglesia")
+bcv = pybcv.PyBCV() #linea 8 corregida
 
 # Función para obtener la tasa automáticamente
 def obtener_tasa_bcv():
