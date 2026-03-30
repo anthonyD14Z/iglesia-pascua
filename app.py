@@ -5,9 +5,9 @@ from datetime import datetime
 # --- 1. CONFIGURACIÓN INICIAL Y SESIÓN ---
 # Estos valores son los "de fábrica" si la app se reinicia.
 USUARIO_BASE = "admin"
-CLAVE_BASE = "lapascua2026"
-PREGUNTA_SEGURIDAD = "¿Cuál es el nombre de la iglesia?"
-RESPUESTA_CORRECTA = "Llamados a ser Diferentes"
+CLAVE_BASE = "admin"
+PREGUNTA_SEGURIDAD = "¿mi ciudad favorita?"
+RESPUESTA_CORRECTA = "valle de la pascua"
 
 # Inicializar estados globales si no existen
 if 'usuario_actual' not in st.session_state:
