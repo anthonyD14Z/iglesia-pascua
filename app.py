@@ -5,7 +5,7 @@ from datetime import datetime
 # --- 1. CONFIGURACIÓN INICIAL Y SESIÓN ---
 # Estos valores son los "de fábrica" si la app se reinicia.
 USUARIO_BASE = "admin"
-CLAVE_BASE = "pascua2026"
+CLAVE_BASE = "lapascua2026"
 PREGUNTA_SEGURIDAD = "¿Cuál es el nombre de la iglesia?"
 RESPUESTA_CORRECTA = "Llamados a ser Diferentes"
 
