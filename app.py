@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from pybcv import PyBCV  # <--- Librería para la tasa oficial
+import pybcv  # <--- Librería para la tasa oficial
 
 # --- INICIO DEL PROGRAMA ---
 st.set_page_config(page_title="Iglesia - Gestión", layout="wide")
-bcv = PyBCV()
+bcv = pybcv.PyBCV()
 
 # Función para obtener la tasa automáticamente
 def obtener_tasa_bcv():
