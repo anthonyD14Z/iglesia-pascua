@@ -9,14 +9,14 @@ import urllib.parse
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="Iglesia Cristo El Salvador", page_icon="⛪", layout="wide")
 
-# 2. FUNCIÓN API TASA BCV
+# 2. FUNCIÓN API TASA BCV (ACTUALIZADA)
 def obtener_tasa_bcv():
     try:
         url = "https://ve.dolarapi.com/v1/dolares/oficial"
         response = requests.get(url, timeout=10)
         return float(response.json()['promedio'])
     except:
-        return 50.0  # Valor manual si la API falla
+        return 50.0
 
 # 3. FUNCIÓN PARA EL FONDO PERSONALIZADO
 def agregar_fondo(nombre_archivo):
@@ -29,7 +29,7 @@ def agregar_fondo(nombre_archivo):
                 background-image: url("data:image/jpg;base64,{encoded_string}");
                 background-size: cover; background-position: center; background-attachment: fixed;
             }}
-            [data-testid="stForm"], .stTabs, .stMetric, div.stAlert, .stDataFrame {{
+            [data-testid="stForm"], .stTabs, .stMetric, div.stAlert, .stDataFrame, .stTable {{
                 background-color: rgba(255, 255, 255, 0.96) !important;
                 padding: 20px !important; border-radius: 15px !important;
                 box-shadow: 0 4px 12px rgba(0,0,0,0.3);
@@ -40,9 +40,10 @@ def agregar_fondo(nombre_archivo):
     except:
         pass
 
+# Llamada al fondo (Asegúrate que el nombre coincida en GitHub)
 agregar_fondo('1000687124.jpg')
 
-# 4. BASE DE DATOS
+# 4. BASE DE DATOS (ESTRUCTURA COMPLETA)
 conn = sqlite3.connect('iglesia_pascua_web.db', check_same_thread=False)
 curr = conn.cursor()
 curr.execute("""CREATE TABLE IF NOT EXISTS finanzas 
@@ -59,124 +60,133 @@ USUARIOS = {
     "admin": {"clave": "pastor2026", "rol": "todos"}
 }
 
-if "sesion" not in st.session_state:
-    st.session_state.sesion = None
+if "sesion" not in st.session_state: st.session_state.sesion = None
+if "recuperar" not in st.session_state: st.session_state.recuperar = False
 
-# --- PANTALLA DE LOGIN ---
+# --- LÓGICA DE LOGIN Y RECUPERACIÓN ---
 if st.session_state.sesion is None:
     st.markdown("<h1 style='text-align: center;'>🔐 Acceso al Sistema</h1>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1, 1.5, 1])
-    with col2:
-        with st.form("login_form"):
-            user_input = st.text_input("Usuario")
-            pass_input = st.text_input("Contraseña", type="password")
-            if st.form_submit_button("Entrar"):
-                if user_input in USUARIOS and USUARIOS[user_input]["clave"] == pass_input:
-                    st.session_state.sesion = USUARIOS[user_input]["rol"]
-                    st.rerun()
-                else:
-                    st.error("Usuario o clave incorrectos")
+    col_l1, col_l2, col_l3 = st.columns([1, 1.5, 1])
+    
+    with col_l2:
+        if not st.session_state.recuperar:
+            with st.form("login_form"):
+                u_log = st.text_input("Usuario")
+                p_log = st.text_input("Contraseña", type="password")
+                if st.form_submit_button("Entrar"):
+                    if u_log in USUARIOS and USUARIOS[u_log]["clave"] == p_log:
+                        st.session_state.sesion = USUARIOS[u_log]["rol"]
+                        st.rerun()
+                    else: st.error("Usuario o clave incorrectos")
+            if st.button("Olvidé mi contraseña"):
+                st.session_state.recuperar = True
+                st.rerun()
+        else:
+            st.write("### 🛠️ Recuperación de Clave")
+            preg = st.text_input("Pregunta de seguridad: ¿Cuál es el nombre de la congregación?")
+            if st.button("Ver Claves"):
+                if preg.lower() == "cristo el salvador":
+                    for user, info in USUARIOS.items():
+                        st.code(f"Usuario: {user} | Clave: {info['clave']}")
+                else: st.error("Respuesta incorrecta")
+            if st.button("Volver"):
+                st.session_state.recuperar = False
+                st.rerun()
     st.stop()
 
-# --- PANEL DE CONTROL SEGÚN ROL ---
+# --- PANEL PRINCIPAL ---
 rol = st.session_state.sesion
 if st.sidebar.button("🚪 Cerrar Sesión"):
     st.session_state.sesion = None
     st.rerun()
 
 st.title(f"⛪ Panel de Gestión - {rol.upper()}")
-
-# Definir pestañas permitidas
 pestanas_visibles = []
 if rol in ["finanzas", "todos"]: pestanas_visibles.append("💰 Diezmos/Ofrendas")
-if rol in ["materiales", "todos"]: pestanas_visibles.append("📦 Materiales/Donaciones")
+if rol in ["materiales", "todos"]: pestanas_visibles.append("📦 Materiales")
 if rol in ["asistencia", "todos"]: pestanas_visibles.append("👥 Asistencia")
 if rol == "todos": 
-    pestanas_visibles.append("📡 Seguimiento Pastoral")
-    pestanas_visibles.append("🛠️ Ajustes de Admin")
+    pestanas_visibles.append("📡 Seguimiento")
+    pestanas_visibles.append("🛠️ Ajustes")
 
 tabs = st.tabs(pestanas_visibles)
 idx = 0
 
-# --- LÓGICA DE CADA PESTAÑA ---
-
-# 1. FINANZAS
+# --- 1. SECCIÓN FINANZAS ---
 if rol in ["finanzas", "todos"]:
     with tabs[idx]:
         st.subheader("Registro de Finanzas")
-        tasa_actual = obtener_tasa_bcv()
+        tasa_val = obtener_tasa_bcv()
         with st.form("f_din", clear_on_submit=True):
-            n = st.text_input("Nombre del Hermano/a")
-            r = st.text_input("Referencia / Concepto")
-            col_a, col_b = st.columns(2)
-            mv = col_a.number_input("Monto VES", min_value=0.0)
-            ts = col_b.number_input("Tasa Aplicada", value=tasa_actual)
+            n_f = st.text_input("Nombre del Hermano/a")
+            r_f = st.text_input("Referencia (Banco / Concepto)")
+            c1, c2 = st.columns(2)
+            mv_f = c1.number_input("Monto VES", min_value=0.0)
+            ts_f = c2.number_input("Tasa Aplicada", value=tasa_val)
             if st.form_submit_button("💾 Guardar"):
-                if n and mv > 0:
-                    mu = mv / ts
-                    curr.execute("INSERT INTO finanzas (nombre, referencia, monto_ves, tasa, monto_usd, fecha) VALUES (?,?,?,?,?,?)", (n, r, mv, ts, mu, date.today()))
-                    conn.commit()
-                    st.success(f"Registrado: ${mu:.2f}")
+                if n_f and mv_f > 0:
+                    curr.execute("INSERT INTO finanzas (nombre, referencia, monto_ves, tasa, monto_usd, fecha) VALUES (?,?,?,?,?,?)", 
+                                 (n_f, r_f, mv_f, ts_f, mv_f/ts_f, date.today()))
+                    conn.commit(); st.success("Registrado correctamente")
     idx += 1
 
-# 2. MATERIALES
+# --- 2. SECCIÓN MATERIALES ---
 if rol in ["materiales", "todos"]:
     with tabs[idx]:
         st.subheader("Donaciones de Materiales")
         with st.form("f_mat", clear_on_submit=True):
-            d = st.text_input("Donante")
-            c = st.selectbox("Categoría", ["Alimentos", "Medicinas", "Construcción", "Limpieza", "Otros"])
-            desc = st.text_area("Descripción")
+            don_m = st.text_input("Donante")
+            cat_m = st.selectbox("Categoría", ["Alimentos", "Medicinas", "Construcción", "Limpieza", "Otros"])
+            desc_m = st.text_area("Descripción")
             if st.form_submit_button("💾 Registrar"):
-                curr.execute("INSERT INTO materiales (donante, categoria, descripcion, fecha) VALUES (?,?,?,?)", (d, c, desc, date.today()))
-                conn.commit()
-                st.success("Guardado")
+                curr.execute("INSERT INTO materiales (donante, categoria, descripcion, fecha) VALUES (?,?,?,?)", (don_m, cat_m, desc_m, date.today()))
+                conn.commit(); st.success("Donación guardada")
     idx += 1
 
-# 3. ASISTENCIA
+# --- 3. SECCIÓN ASISTENCIA ---
 if rol in ["asistencia", "todos"]:
     with tabs[idx]:
         st.subheader("Control de Asistencia")
         with st.form("f_asis", clear_on_submit=True):
-            na = st.text_input("Nombre Completo")
-            wa = st.text_input("WhatsApp (Ej: 584120000000)")
+            nom_a = st.text_input("Nombre Completo")
+            tel_a = st.text_input("WhatsApp (Ej: 584120000000)")
             if st.form_submit_button("✅ Marcar"):
-                curr.execute("INSERT INTO asistencia (nombre, telefono, fecha) VALUES (?,?,?)", (na, wa, date.today()))
-                conn.commit()
-                st.success("Asistencia marcada")
+                if nom_a:
+                    curr.execute("INSERT INTO asistencia (nombre, telefono, fecha) VALUES (?,?,?)", (nom_a, tel_a, date.today()))
+                    conn.commit(); st.success("Asistencia registrada")
     idx += 1
 
-# 4. SEGUIMIENTO (SOLO ADMIN)
+# --- 4. SECCIÓN SEGUIMIENTO PASTORAL (WHATSAPP) ---
 if rol == "todos":
     with tabs[idx]:
-        st.subheader("📡 Seguimiento Mensual WhatsApp")
-        hace_mes = (date.today() - timedelta(days=30)).isoformat()
+        st.header("📡 Seguimiento Mensual WhatsApp")
+        hace_30 = (date.today() - timedelta(days=30)).isoformat()
         col_f, col_a = st.columns(2)
-        
         with col_f:
-            st.write("🌟 **Fieles Ininterrumpidos**")
-            df_f = pd.read_sql_query(f"SELECT nombre, telefono, COUNT(*) as t FROM asistencia WHERE fecha >= '{hace_mes}' GROUP BY nombre HAVING t >= 4", conn)
-            for i, row in df_f.iterrows():
-                txt = urllib.parse.quote(f"¡Bendiciones {row['nombre']}! Le felicitamos por su constancia este mes. 🙌")
-                st.link_button(f"Felicitar a {row['nombre']}", f"https://wa.me/{row['telefono']}?text={txt}")
-        
+            st.subheader("🌟 Fidelidad (Ininterrumpida)")
+            df_f = pd.read_sql_query(f"SELECT nombre, telefono, COUNT(*) as t FROM asistencia WHERE fecha >= '{hace_30}' GROUP BY nombre HAVING t >= 4", conn)
+            for i, r in df_f.iterrows():
+                msg = urllib.parse.quote(f"¡Bendiciones {r['nombre']}! Le felicitamos por su constancia ininterrumpida este mes. 🙌")
+                st.info(f"✅ {r['nombre']}")
+                st.link_button(f"Felicitar", f"https://wa.me/{r['telefono']}?text={msg}")
         with col_a:
-            st.write("📉 **Ausentes (Más de 1 mes)**")
-            df_a = pd.read_sql_query(f"SELECT nombre, telefono, MAX(fecha) as u FROM asistencia GROUP BY nombre HAVING u < '{hace_mes}'", conn)
-            for i, row in df_a.iterrows():
-                txt = urllib.parse.quote(f"Hola {row['nombre']}, le extrañamos este último mes. 🙏")
-                st.link_button(f"Animar a {row['nombre']}", f"https://wa.me/{row['telefono']}?text={txt}")
+            st.subheader("📉 Ausentes (Más de 1 mes)")
+            df_a = pd.read_sql_query(f"SELECT nombre, telefono, MAX(fecha) as u FROM asistencia GROUP BY nombre HAVING u < '{hace_30}'", conn)
+            for i, r in df_a.iterrows():
+                msg = urllib.parse.quote(f"Hola {r['nombre']}, le extrañamos este último mes en la congregación. ¡Dios le bendiga! 🙏")
+                st.warning(f"⚠️ {r['nombre']}")
+                st.link_button(f"Enviar Ánimo", f"https://wa.me/{r['telefono']}?text={msg}")
     idx += 1
 
-# 5. AJUSTES (SOLO ADMIN)
+# --- 5. SECCIÓN AJUSTES ---
 if rol == "todos":
     with tabs[idx]:
-        st.subheader("🛠️ Panel Administrativo")
-        t_ver = st.selectbox("Tabla a gestionar", ["finanzas", "materiales", "asistencia"])
-        df_edit = pd.read_sql_query(f"SELECT * FROM {t_ver} ORDER BY id DESC", conn)
-        st.dataframe(df_edit)
-        id_borrar = st.number_input("ID para borrar", min_value=0)
-        if st.button("🗑️ Eliminar Registro"):
-            curr.execute(f"DELETE FROM {t_ver} WHERE id=?", (id_borrar,))
-            conn.commit()
-            st.rerun()
+        st.subheader("🛠️ Administración de Datos")
+        tab_v = st.selectbox("Seleccionar Tabla", ["finanzas", "materiales", "asistencia"])
+        df_ver = pd.read_sql_query(f"SELECT * FROM {tab_v} ORDER BY id DESC", conn)
+        st.dataframe(df_ver)
+        id_b = st.number_input("ID para borrar", min_value=0)
+        if st.button("🗑️ Eliminar"):
+            curr.execute(f"DELETE FROM {tab_v} WHERE id=?", (id_b,))
+            conn.commit(); st.rerun()
+
