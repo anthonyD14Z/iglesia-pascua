@@ -1,142 +1,165 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+import sqlite3
+from datetime import date, datetime, timedelta
+import urllib.parse
+import base64
 
-# --- 1. CONFIGURACIÓN INICIAL Y SESIÓN ---
-# Estos valores son los "de fábrica" si la app se reinicia.
-USUARIO_BASE = "admin"
-CLAVE_BASE = "pascua2026"
-PREGUNTA_SEGURIDAD = "¿Cuál es el nombre de la iglesia?"
-RESPUESTA_CORRECTA = "Llamados a ser Diferentes"
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(page_title="Iglesia Cristo El Salvador", page_icon="⛪", layout="wide")
 
-# Inicializar estados globales si no existen
-if 'usuario_actual' not in st.session_state:
-    st.session_state.usuario_actual = USUARIO_BASE
-if 'clave_actual' not in st.session_state:
-    st.session_state.clave_actual = CLAVE_BASE
-if 'autenticado' not in st.session_state:
-    st.session_state.autenticado = False
-if 'mostrar_recuperacion' not in st.session_state:
-    st.session_state.mostrar_recuperacion = False
-if 'datos' not in st.session_state:
-    st.session_state.datos = []
+# --- FUNCIÓN PARA EL FONDO PERSONALIZADO ---
+def agregar_fondo(nombre_archivo):
+    try:
+        with open(nombre_archivo, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode()
+        st.markdown(
+            f"""
+            <style>
+            .stApp {{
+                background-image: url("data:image/jpg;base64,{encoded_string}");
+                background-size: cover;
+                background-position: center;
+                background-attachment: fixed;
+            }}
+            [data-testid="stForm"], .stTabs, .stMetric, div.stAlert, .stDataFrame {{
+                background-color: rgba(255, 255, 255, 0.92) !important;
+                padding: 20px !important;
+                border-radius: 15px !important;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            }}
+            h1, h2, h3 {{ color: #1a1a1a !important; text-shadow: 1px 1px 2px white; }}
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+    except FileNotFoundError:
+        st.warning("⚠️ No se encontró el archivo de imagen. Asegúrate de que se llame '1000687124.jpg'.")
 
-# --- 2. FUNCIÓN DE LOGIN ---
-def login():
-    if not st.session_state.autenticado:
-        st.title("🔒 Acceso Privado - Iglesia")
-        
-        usuario_input = st.text_input("Usuario")
-        clave_input = st.text_input("Contraseña", type="password")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if st.button("Entrar"):
-                if usuario_input == st.session_state.usuario_actual and clave_input == st.session_state.clave_actual:
-                    st.session_state.autenticado = True
+# Aplicamos el fondo
+agregar_fondo('1000687124.jpg')
+
+# --- CONEXIÓN A BASE DE DATOS ---
+@st.cache_resource
+def conectar_db():
+    conn = sqlite3.connect('iglesia_pascua_web.db', check_same_thread=False)
+    return conn
+
+conn = conectar_db()
+curr = conn.cursor()
+
+# Inicialización de tablas
+curr.execute("CREATE TABLE IF NOT EXISTS finanzas (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, monto_ves REAL, tasa REAL, monto_usd REAL, fecha DATE)")
+curr.execute("CREATE TABLE IF NOT EXISTS materiales (id INTEGER PRIMARY KEY AUTOINCREMENT, donante TEXT, categoria TEXT, descripcion TEXT, fecha DATE)")
+curr.execute("CREATE TABLE IF NOT EXISTS asistencia (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, telefono TEXT, fecha DATE)")
+conn.commit()
+
+# --- SISTEMA DE LOGIN ---
+if "logueado" not in st.session_state:
+    st.session_state.logueado = False
+
+if not st.session_state.logueado:
+    st.markdown("<h1 style='text-align: center;'>Iglesia Cristo El Salvador</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center;'>Llamados a ser Diferentes</h3>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 1.5, 1])
+    with col2:
+        with st.form("login"):
+            st.write("### 🔐 Acceso Administrativo")
+            user = st.text_input("Usuario")
+            pw = st.text_input("Contraseña", type="password")
+            if st.form_submit_button("Entrar"):
+                if user == "admin" and pw == "pascua2026": # Puedes cambiar tu clave aquí
+                    st.session_state.logueado = True
                     st.rerun()
                 else:
-                    st.error("Usuario o contraseña incorrectos")
-        
-        with col2:
-            if st.button("¿Olvidaste tus datos?"):
-                st.session_state.mostrar_recuperacion = not st.session_state.mostrar_recuperacion
+                    st.error("Credenciales incorrectas")
+    st.stop()
 
-        # Sección de recuperación (se activa al olvidar datos)
-        if st.session_state.mostrar_recuperacion:
-            st.divider()
-            st.warning(f"**Recuperación:** {PREGUNTA_SEGURIDAD}")
-            respuesta = st.text_input("Escribe la respuesta secreta")
-            
-            if st.button("Verificar Respuesta"):
-                if respuesta.lower().strip() == RESPUESTA_CORRECTA.lower().strip():
-                    st.info(f"✅ Credenciales actuales:\n- Usuario: **{st.session_state.usuario_actual}**\n- Clave: **{st.session_state.clave_actual}**")
-                else:
-                    st.error("Respuesta incorrecta")
-        return False
-    return True
+# --- PANEL PRINCIPAL ---
+st.title("⛪ Gestión Administrativa")
+tabs = st.tabs(["💰 Finanzas", "📦 Materiales", "👥 Asistencia", "📊 Reportes y Gestión"])
 
-# --- 3. CUERPO PRINCIPAL DE LA APP ---
-if login():
-    st.set_page_config(page_title="Iglesia - Gestión", layout="wide")
+# --- PESTAÑA 1: FINANZAS ---
+with tabs[0]:
+    st.subheader("Registro de Diezmos y Ofrendas")
+    with st.form("f_dinero", clear_on_submit=True):
+        nombre = st.text_input("Nombre del Hermano/a")
+        c1, c2 = st.columns(2)
+        m_ves = c1.number_input("Monto en VES", min_value=0.0)
+        tasa = c2.number_input("Tasa BCV", value=50.0)
+        if st.form_submit_button("💾 Guardar Aporte"):
+            if nombre and m_ves > 0:
+                m_usd = m_ves / tasa
+                curr.execute("INSERT INTO finanzas (nombre, monto_ves, tasa, monto_usd, fecha) VALUES (?,?,?,?,?)", 
+                             (nombre, m_ves, tasa, m_usd, date.today()))
+                conn.commit()
+                st.success(f"¡Registrado! Total: ${m_usd:.2f}")
+                st.balloons()
+
+# --- PESTAÑA 2: MATERIALES ---
+with tabs[1]:
+    st.subheader("Donaciones de Objetos/Insumos")
+    with st.form("f_material", clear_on_submit=True):
+        donante = st.text_input("Nombre del Donante")
+        cat = st.selectbox("Categoría", ["Cocina", "Medicina", "Decoración", "Jóvenes", "Otros"])
+        desc = st.text_area("Descripción de lo donado")
+        if st.form_submit_button("💾 Registrar Material"):
+            curr.execute("INSERT INTO materiales (donante, categoria, descripcion, fecha) VALUES (?,?,?,?)", 
+                         (donante, cat, desc, date.today()))
+            conn.commit()
+            st.success("Donación registrada exitosamente.")
+
+# --- PESTAÑA 3: ASISTENCIA ---
+with tabs[2]:
+    st.subheader("Paso de Asistencia")
+    with st.form("f_asistencia", clear_on_submit=True):
+        nom_asis = st.text_input("Nombre Completo")
+        tel_asis = st.text_input("WhatsApp (ej: 584121234567)")
+        if st.form_submit_button("✅ Registrar Entrada"):
+            curr.execute("INSERT INTO asistencia (nombre, telefono, fecha) VALUES (?,?,?)", 
+                         (nom_asis, tel_asis, date.today()))
+            conn.commit()
+            st.success(f"¡Bienvenido/a {nom_asis}!")
+
+# --- PESTAÑA 4: REPORTES Y GESTIÓN ---
+with tabs[3]:
+    st.subheader(f"Resumen del día: {date.today()}")
     
-    st.sidebar.title("Menú")
-    if st.sidebar.button("Cerrar Sesión"):
-        st.session_state.autenticado = False
+    # Reporte de Dinero
+    df_f = pd.read_sql_query(f"SELECT * FROM finanzas WHERE fecha = '{date.today()}'", conn)
+    if not df_f.empty:
+        st.write("💵 **Aportes Económicos**")
+        st.dataframe(df_f[['nombre', 'monto_ves', 'monto_usd']])
+        total_usd = df_f['monto_usd'].sum()
+        st.metric("Total Recaudado", f"${total_usd:.2f}")
+    
+    # Reporte de Asistencia Mensual y Felicitaciones
+    st.divider()
+    st.write("🏆 **Fidelidad y Asistencia (Mes Actual)**")
+    mes = date.today().strftime('%m')
+    df_m = pd.read_sql_query(f"SELECT nombre, telefono, COUNT(*) as total FROM asistencia WHERE strftime('%m', fecha) = '{mes}' GROUP BY nombre", conn)
+    
+    if not df_m.empty:
+        max_asist = df_m['total'].max()
+        constantes = df_m[df_m['total'] == max_asist]
+        for _, row in constantes.iterrows():
+            col_a, col_b = st.columns([0.7, 0.3])
+            col_a.write(f"🌟 **{row['nombre']}** ({row['total']} asistencias)")
+            
+            # Mensaje bonito de felicitación
+            txt = f"⛪ *IGLESIA CRISTO EL SALVADOR*\n¡Felicidades *{row['nombre']}*! Has tenido asistencia perfecta este mes. ¡Dios te bendiga! 🙌"
+            url = f"https://wa.me/{row['telefono']}?text={urllib.parse.quote(txt)}"
+            col_b.link_button("🎁 Felicitar", url)
+
+    # Botón para borrar errores del día
+    st.divider()
+    if st.button("🗑️ Limpiar registros de hoy (CUIDADO)"):
+        curr.execute(f"DELETE FROM finanzas WHERE fecha = '{date.today()}'")
+        curr.execute(f"DELETE FROM materiales WHERE fecha = '{date.today()}'")
+        curr.execute(f"DELETE FROM asistencia WHERE fecha = '{date.today()}'")
+        conn.commit()
+        st.warning("Registros de hoy eliminados.")
         st.rerun()
 
-    st.title("⛪ Llamados a ser Diferentes")
-    st.subheader("Gestión de Diezmos y Ofrendas - Valle de la Pascua")
-
-    # Definición de pestañas (Tabs)
-    tab1, tab2, tab3 = st.tabs(["📝 Registro Nuevo", "📊 Reporte del Día", "⚙️ Configuración"])
-
-    # TAB 1: REGISTRO
-    with tab1:
-        st.markdown("### Ingrese los datos del aporte")
-        col_a, col_b = st.columns(2)
-        
-        with col_a:
-            nombre = st.text_input("Nombre del Hermano/a")
-            tipo = st.selectbox("Tipo de Aporte", ["Diezmo", "Ofrenda", "Donación Especial"])
-            metodo = st.selectbox("Método de Pago", ["Efectivo $", "Efectivo Bs", "Transferencia", "Pago Móvil"])
-        
-        with col_b:
-            monto_bs = st.number_input("Monto en Bolívares (Bs)", min_value=0.0, step=0.1)
-            tasa = st.number_input("Tasa BCV del día", min_value=1.0, value=45.0)
-            referencia = st.text_input("Número de Referencia", help="Últimos dígitos de la transferencia")
-
-        if st.button("💾 Guardar Registro"):
-            if nombre and monto_bs > 0:
-                monto_usd = round(monto_bs / tasa, 2)
-                nuevo = {
-                    "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                    "Hermano": nombre,
-                    "Tipo": tipo,
-                    "Método": metodo,
-                    "Referencia": referencia if referencia else "N/A",
-                    "Monto Bs": monto_bs,
-                    "Tasa": tasa,
-                    "Monto USD": monto_usd
-                }
-                st.session_state.datos.append(nuevo)
-                st.success(f"✅ Registro de {nombre} guardado.")
-            else:
-                st.warning("⚠️ Complete nombre y monto.")
-
-    # TAB 2: REPORTE
-    with tab2:
-        st.markdown("### Reporte Detallado")
-        if st.session_state.datos:
-            df = pd.DataFrame(st.session_state.datos)
-            st.dataframe(df, use_container_width=True)
-            
-            t_bs = df["Monto Bs"].sum()
-            t_usd = df["Monto USD"].sum()
-            
-            m1, m2 = st.columns(2)
-            m1.metric("Total Bs", f"{t_bs:,.2f}")
-            m2.metric("Total USD", f"{t_usd:,.2f}")
-            
-            texto_wa = f"Resumen Iglesia: Total {t_bs} Bs ({t_usd} $)."
-            link_wa = f"https://wa.me/?text={texto_wa.replace(' ', '%20')}"
-            st.markdown(f'[📲 Enviar por WhatsApp]({link_wa})')
-        else:
-            st.info("No hay registros hoy.")
-
-    # TAB 3: CONFIGURACIÓN (CAMBIO DE CLAVE)
-    with tab3:
-        st.markdown("### 🔐 Cambiar Credenciales")
-        new_user = st.text_input("Nuevo Usuario Admin", value=st.session_state.usuario_actual)
-        new_pass = st.text_input("Nueva Contraseña", type="password")
-        conf_pass = st.text_input("Confirmar Contraseña", type="password")
-        
-        if st.button("Guardar Nuevas Credenciales"):
-            if new_pass == conf_pass and new_pass != "":
-                st.session_state.usuario_actual = new_user
-                st.session_state.clave_actual = new_pass
-                st.success("✅ Datos actualizados. Se usarán en su próximo inicio de sesión.")
-            else:
-                st.error("Las contraseñas no coinciden o están vacías.")
+conn.close()
 
