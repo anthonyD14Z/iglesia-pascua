@@ -204,7 +204,7 @@ if rol in ["asistencia", "todos"]:
         st.subheader("🎂 Cumpleaños")
         with st.form("f_cu"):
             n_c = st.text_input("Nombre")
-            f_c = st.date_input("Fecha: DIA/MES/AÑO")
+            f_c = st.date_input("Fecha")
             t_c = st.text_input("Telf")
             if st.form_submit_button("Guardar Cumpleaños"):
                 curr.execute("INSERT INTO eventos (nombre_persona, tipo, fecha_evento, telefono) VALUES (?,?,?,?)", (n_c, "Cumpleaños", f_c, t_c))
