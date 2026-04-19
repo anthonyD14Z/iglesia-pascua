@@ -167,12 +167,7 @@ if rol in ["materiales", "todos"]:
                 curr.execute("INSERT INTO materiales (donante, categoria, descripcion, fecha) VALUES (?,?,?,?)", (d_m, "General", desc_m, date.today()))
                 conn.commit(); st.success("Guardado")
     idx += 1
-    with tabs[idx]:
-        df_m = pd.read_sql_query("SELECT * FROM materiales", conn)
-        st.data_editor(df_m, use_container_width=True, num_rows="dynamic")
-    idx += 1
-
-# --- 3. ASISTENCIA Y MIEMBROS ---
+    # --- 3. ASISTENCIA Y MIEMBROS ---
 if rol in ["asistencia", "todos"]:
     # Pestaña 1: Registro de Miembros
     with tabs[idx]:
@@ -196,42 +191,66 @@ if rol in ["asistencia", "todos"]:
     # Pestaña 2: Tomar Asistencia (Lista con Checkboxes)
     with tabs[idx]:
         st.subheader("📅 Pase de Lista")
-        fec_asist = st.date_input("Fecha del Culto", format="DD/MM/YYYY", key="fecha_asistencia")
-        df_miembros = pd.read_sql_query("SELECT id, nombre FROM miembros ORDER BY nombre ASC", conn)
+        fec_asist = st.date_input("Fecha del Culto", format="DD/MM/YYYY", key="fecha_asist_key")
         
-        if not df_miembros.empty:
-            with st.form("formulario_asistencia_grupal"):
-                st.write("Seleccione a los asistentes:")
-                asistencias_dict = {}
-                for _, fila in df_miembros.iterrows():
-                    asistencias_dict[fila['id']] = st.checkbox(fila['nombre'], key=f"asist_{fila['id']}")
+        # Consultamos los miembros
+        df_m = pd.read_sql_query("SELECT id, nombre FROM miembros ORDER BY nombre ASC", conn)
+        
+        if not df_m.empty:
+            with st.form("form_asistencia_grupal"):
+                st.write("Marque a los hermanos presentes:")
+                asist_dict = {}
+                # Aquí se generan los nombres con sus cuadritos
+                for _, fila in df_m.iterrows():
+                    asist_dict[fila['id']] = st.checkbox(fila['nombre'], key=f"chk_{fila['id']}")
                 
                 if st.form_submit_button("💾 Guardar Asistencia"):
-                    for m_id, asistio in asistencias_dict.items():
+                    for m_id, asistio in asist_dict.items():
                         if asistio:
                             curr.execute("INSERT INTO asistencia (miembro_id, fecha) VALUES (?,?)", (int(m_id), fec_asist))
                     conn.commit()
-                    st.success(f"✅ Asistencia guardada")
+                    st.success(f"✅ Asistencia guardada para el {fec_asist.strftime('%d/%m/%Y')}")
                     st.rerun()
         else:
-            st.info("No hay miembros registrados aún.")
+            st.info("No hay miembros en la base de datos. Regístrelos en la pestaña anterior.")
     idx += 1
 
     # Pestaña 3: Informe de Asistencia
     with tabs[idx]:
         st.subheader("📝 Informe de Asistencia")
-        query_as = """
+        query_inf = """
             SELECT asistencia.id, miembros.nombre, asistencia.fecha 
             FROM asistencia 
             JOIN miembros ON asistencia.miembro_id = miembros.id
             ORDER BY asistencia.fecha DESC
         """
-        df_as_repo = pd.read_sql_query(query_as, conn)
-        if not df_as_repo.empty:
-            df_as_repo['fecha'] = pd.to_datetime(df_as_repo['fecha']).dt.strftime('%d/%m/%Y')
-            st.data_editor(df_as_repo, use_container_width=True, num_rows="dynamic", key="tabla_asistencia")
+        df_rep = pd.read_sql_query(query_inf, conn)
+        if not df_rep.empty:
+            df_rep['fecha'] = pd.to_datetime(df_rep['fecha']).dt.strftime('%d/%m/%Y')
+            st.data_editor(df_rep, use_container_width=True, num_rows="dynamic", key="tabla_asist_edit")
         else:
-            st.info("No hay registros.")
+            st.info("No hay registros de asistencia.")
+    idx += 1
+
+    # Pestaña 4: Cumpleaños
+    with tabs[idx]:
+        st.subheader("🎂 Registro de Cumpleaños")
+        with st.form("f_cumple_final", clear_on_submit=True):
+            n_c = st.text_input("Nombre del Cumpleañero")
+            f_c = st.date_input("Fecha de Nacimiento", min_value=date(1900, 1, 1), format="DD/MM/YYYY")
+            t_c = st.text_input("WhatsApp")
+            if st.form_submit_button("💾 Guardar"):
+                if n_c:
+                    curr.execute("INSERT INTO eventos (nombre_persona, tipo, fecha_evento, telefono) VALUES (?,?,?,?)", 
+                                (n_c, "Cumpleaños", f_c, t_c))
+                    conn.commit()
+                    st.success("✅ Guardado")
+                    st.rerun()
+        st.divider()
+        df_ev = pd.read_sql_query("SELECT * FROM eventos WHERE tipo='Cumpleaños'", conn)
+        if not df_ev.empty:
+            df_ev['fecha_evento'] = pd.to_datetime(df_ev['fecha_evento']).dt.strftime('%d/%m/%Y')
+            st.data_editor(df_ev, use_container_width=True, num_rows="dynamic", key="tabla_cumples_edit")
     idx += 1
 
     # Pestaña 4: Cumpleaños
