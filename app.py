@@ -183,18 +183,45 @@ if rol in ["asistencia", "todos"]:
             if st.form_submit_button("➕ Añadir"):
                 curr.execute("INSERT INTO miembros (nombre, telefono, direccion) VALUES (?,?,?)", (nm, tm, dm))
                 conn.commit(); st.success("Añadido")
-    idx += 1
     with tabs[idx]:
-        st.subheader("📅 Marcar Asistencia")
-        df_l = pd.read_sql_query("SELECT id, nombre FROM miembros", conn)
-        if not df_l.empty:
-            with st.form("f_as", clear_on_submit=True):
-                herm = st.selectbox("Hermano/a", df_l['nombre'].tolist())
-                fec = st.date_input("Fecha")
-                if st.form_submit_button("✅ Marcar"):
-                    m_id = df_l[df_l['nombre'] == herm]['id'].values[0]
-                    curr.execute("INSERT INTO asistencia (miembro_id, fecha) VALUES (?,?)", (int(m_id), fec))
-                    conn.commit(); st.success("Asistencia marcada")
+        st.subheader("📅 Pase de Lista - Asistencia")
+        fec = st.date_input("Fecha del Culto", format="DD/MM/YYYY")
+        
+        # Obtenemos la lista completa de miembros
+        df_miembros = pd.read_sql_query("SELECT id, nombre FROM miembros ORDER BY nombre ASC", conn)
+        
+        if not df_miembros.empty:
+            st.markdown("### Marque los hermanos que asistieron:")
+            
+            # 1. Creamos un formulario para procesar todos los checks a la vez
+            with st.form("formulario_asistencia_grupal"):
+                asistencias_dict = {}
+                
+                # Creamos una fila con checkbox por cada miembro
+                for _, fila in df_miembros.iterrows():
+                    # El dict guardará True o False según el check
+                    asistencias_dict[fila['id']] = st.checkbox(fila['nombre'], key=f"asist_{fila['id']}")
+                
+                guardar_todo = st.form_submit_button("✅ Registrar Asistencia del Día")
+                
+                if guardar_todo:
+                    # Contador para saber cuántos se registraron
+                    contador = 0
+                    for m_id, asistio in asistencias_dict.items():
+                        if asistio:
+                            # Insertamos solo a los que tienen el check marcado
+                            curr.execute("INSERT INTO asistencia (miembro_id, fecha) VALUES (?,?)", (int(m_id), fec))
+                            contador += 1
+                    
+                    conn.commit()
+                    if contador > 0:
+                        st.success(f"🎊 ¡Listo! Se registró la asistencia de {contador} personas para el día {fec.strftime('%d/%m/%Y')}.")
+                    else:
+                        st.warning("⚠️ No marcaste a nadie en la lista.")
+        else:
+            st.info("No hay miembros registrados. Primero añade hermanos en la pestaña 'Registro Miembros'.")
+
+
     idx += 1
     with tabs[idx]:
         st.subheader("📝 Reporte de Asistencia")
