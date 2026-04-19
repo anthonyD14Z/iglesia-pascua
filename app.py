@@ -201,7 +201,7 @@ if rol in ["asistencia", "todos"]:
         df_as = pd.read_sql_query("SELECT asistencia.id, miembros.nombre, asistencia.fecha FROM asistencia JOIN miembros ON asistencia.miembro_id = miembros.id", conn)
         st.data_editor(df_as, use_container_width=True, num_rows="dynamic")
     idx += 1
- with tabs[idx]:
+    with tabs[idx]:
         st.subheader("🎂 Registro de Cumpleaños")
         
         # Formulario que se limpia solo al guardar
