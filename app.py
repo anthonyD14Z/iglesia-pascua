@@ -4,25 +4,24 @@ import pandas as pd
 import sqlite3
 from datetime import date
 import os
-from PIL import Image
 import io
 
 # --- 1. CONFIGURACIÓN E INTERFAZ ---
 st.set_page_config(page_title="Iglesia Pascua - Sistema Integral", layout="wide")
 
-# --- 2. BASE DE DATOS (ESTRUCTURA COMPLETA) ---
+# --- 2. CONEXIÓN A BASE DE DATOS ---
 conn = sqlite3.connect("iglesia_pascua.db", check_same_thread=False)
 curr = conn.cursor()
 
-# Tablas de todas las áreas
+# Creación de todas las tablas necesarias
 curr.execute("CREATE TABLE IF NOT EXISTS miembros (id INTEGER PRIMARY KEY, nombre TEXT, telefono TEXT, direccion TEXT)")
 curr.execute("CREATE TABLE IF NOT EXISTS asistencia (id INTEGER PRIMARY KEY, miembro_id INTEGER, fecha TEXT)")
 curr.execute("CREATE TABLE IF NOT EXISTS eventos (id INTEGER PRIMARY KEY, nombre_persona TEXT, tipo TEXT, fecha_evento TEXT, telefono TEXT)")
-curr.execute("CREATE TABLE IF NOT EXISTS finanzas (id INTEGER PRIMARY KEY, tipo TEXT, categoria TEXT, monto REAL, fecha TEXT, descripcion TEXT)")
+curr.execute("CREATE TABLE IF NOT EXISTS finanzas (id INTEGER PRIMARY KEY, tipo TEXT, categoria TEXT, monto REAL, fecha TEXT)")
 curr.execute("CREATE TABLE IF NOT EXISTS materiales (id INTEGER PRIMARY KEY, nombre TEXT, cantidad INTEGER, estado TEXT)")
 conn.commit()
 
-# --- 3. LOGIN ---
+# --- 3. SISTEMA DE ACCESO (LOGIN) ---
 st.sidebar.title("⛪ Acceso Iglesia")
 USUARIOS = {
     "asistencia": "1234",
@@ -40,15 +39,15 @@ if user in USUARIOS and USUARIOS[user] == pw:
     if st.sidebar.button("Cerrar Sesión"):
         st.rerun()
 else:
-    st.info("Ingrese credenciales en el menú lateral para activar los módulos.")
+    st.info("Ingrese credenciales en el menú lateral.")
     st.stop()
 
 # --- 4. GESTIÓN DINÁMICA DE PESTAÑAS ---
 titulos = []
 if rol in ["asistencia", "todos"]:
-    titulos += ["👥 Miembros", "📅 Asistencia", "📝 Informe Asist.", "🎂 Cumpleaños"]
+    titulos += ["👥 Registro", "📅 Pase de Lista", "📝 Informe Asist.", "🎂 Cumpleaños"]
 if rol in ["tesoreria", "todos"]:
-    titulos += ["💰 Finanzas"]
+    titulos += ["💰 Tesorería"]
 if rol in ["inventario", "todos"]:
     titulos += ["📦 Inventario"]
 if rol == "todos":
@@ -57,101 +56,103 @@ if rol == "todos":
 tabs = st.tabs(titulos)
 idx = 0
 
-# --- MODULO: SECRETARÍA (ASISTENCIA) ---
+# --- MÓDULO: SECRETARÍA (ASISTENCIA) ---
 if rol in ["asistencia", "todos"]:
-    # Registro
     with tabs[idx]:
         st.subheader("👥 Registro de Miembros")
         with st.form("f_reg", clear_on_submit=True):
             n = st.text_input("Nombre Completo")
             t = st.text_input("Teléfono")
-            if st.form_submit_button("Añadir"):
+            d = st.text_input("Dirección")
+            if st.form_submit_button("➕ Añadir Miembro"):
                 if n.strip():
-                    curr.execute("INSERT INTO miembros (nombre, telefono) VALUES (?,?)", (n.strip(), t))
+                    curr.execute("INSERT INTO miembros (nombre, telefono, direccion) VALUES (?,?,?)", (n.strip(), t, d))
                     conn.commit()
+                    st.success("✅ Miembro registrado")
                     st.rerun()
     idx += 1
 
-    # Pase de Lista Grupal
     with tabs[idx]:
         st.subheader("📅 Pase de Lista")
-        f_asist = st.date_input("Fecha", key="f_asist_key")
+        f_asist = st.date_input("Fecha del Culto", format="DD/MM/YYYY")
         df_m = pd.read_sql_query("SELECT id, nombre FROM miembros ORDER BY nombre ASC", conn)
         if not df_m.empty:
-            with st.form("f_asist_grp"):
-                checks = {}
+            with st.form("f_lista_grupal"):
+                st.write("Seleccione a los presentes:")
+                asist_marcada = {}
                 for _, fila in df_m.iterrows():
-                    checks[fila['id']] = st.checkbox(fila['nombre'], key=f"c_{fila['id']}")
-                if st.form_submit_button("Guardar Asistencia"):
-                    for m_id, marcando in checks.items():
-                        if marcando:
+                    asist_marcada[fila['id']] = st.checkbox(fila['nombre'], key=f"c_{fila['id']}")
+                if st.form_submit_button("💾 Guardar Asistencia"):
+                    for m_id, check in asist_marcada.items():
+                        if check:
                             curr.execute("INSERT INTO asistencia (miembro_id, fecha) VALUES (?,?)", (int(m_id), f_asist))
                     conn.commit()
-                    st.success("Guardado")
+                    st.success("✅ Asistencia guardada")
                     st.rerun()
     idx += 1
 
-    # Informe
     with tabs[idx]:
         st.subheader("📝 Historial de Asistencia")
-        df_rep = pd.read_sql_query("SELECT a.id, m.nombre, a.fecha FROM asistencia a JOIN miembros m ON a.miembro_id = m.id", conn)
-        st.data_editor(df_rep, use_container_width=True, key="ed_asist")
+        q_asist = "SELECT a.id, m.nombre, a.fecha FROM asistencia a JOIN miembros m ON a.miembro_id = m.id"
+        df_a = pd.read_sql_query(q_asist, conn)
+        st.data_editor(df_a, use_container_width=True, key="ed_asist_hist")
     idx += 1
 
-    # Cumpleaños
     with tabs[idx]:
-        st.subheader("🎂 Cumpleaños")
+        st.subheader("🎂 Registro de Cumpleaños")
         with st.form("f_cum"):
-            nc = st.text_input("Nombre")
+            nc = st.text_input("Nombre del Cumpleañero")
             fc = st.date_input("Fecha", min_value=date(1900,1,1))
-            if st.form_submit_button("Guardar Cumple"):
-                curr.execute("INSERT INTO eventos (nombre_persona, tipo, fecha_evento) VALUES (?,?,?)", (nc, "Cumpleaños", fc))
+            tc = st.text_input("WhatsApp")
+            if st.form_submit_button("💾 Guardar"):
+                curr.execute("INSERT INTO eventos (nombre_persona, tipo, fecha_evento, telefono) VALUES (?,?,?,?)", (nc, "Cumpleaños", fc, tc))
                 conn.commit()
                 st.rerun()
+        st.divider()
+        df_c = pd.read_sql_query("SELECT * FROM eventos WHERE tipo='Cumpleaños'", conn)
+        st.data_editor(df_c, use_container_width=True, key="ed_cumples")
     idx += 1
 
-# --- MODULO: TESORERÍA ---
+# --- MÓDULO: TESORERÍA ---
 if rol in ["tesoreria", "todos"]:
     with tabs[idx]:
-        st.subheader("💰 Gestión Financiera")
-        col1, col2 = st.columns(2)
-        with col1:
-            with st.form("f_fin"):
-                t_f = st.selectbox("Tipo", ["Ingreso", "Egreso"])
-                cat = st.text_input("Categoría (Diezmo, Ofrenda, Gasto)")
-                mon = st.number_input("Monto", min_value=0.0)
-                if st.form_submit_button("Registrar Movimiento"):
-                    curr.execute("INSERT INTO finanzas (tipo, categoria, monto, fecha) VALUES (?,?,?,?)", (t_f, cat, mon, date.today()))
-                    conn.commit()
-                    st.rerun()
-        with col2:
-            df_fin = pd.read_sql_query("SELECT * FROM finanzas ORDER BY id DESC", conn)
-            st.write("Últimos Movimientos")
-            st.dataframe(df_fin, use_container_width=True)
-    idx += 1
-
-# --- MODULO: INVENTARIO ---
-if rol in ["inventario", "todos"]:
-    with tabs[idx]:
-        st.subheader("📦 Inventario de Materiales")
-        with st.form("f_inv"):
-            nom_m = st.text_input("Nombre del Material")
-            can_m = st.number_input("Cantidad", min_value=0)
-            if st.form_submit_button("Agregar al Inventario"):
-                curr.execute("INSERT INTO materiales (nombre, cantidad, estado) VALUES (?,?,?)", (nom_m, can_m, "Bueno"))
+        st.subheader("💰 Finanzas")
+        with st.form("f_fin"):
+            tipo_f = st.selectbox("Tipo", ["Ingreso", "Egreso"])
+            cat_f = st.text_input("Categoría")
+            mon_f = st.number_input("Monto", min_value=0.0)
+            if st.form_submit_button("Registrar"):
+                curr.execute("INSERT INTO finanzas (tipo, categoria, monto, fecha) VALUES (?,?,?,?)", (tipo_f, cat_f, mon_f, date.today()))
                 conn.commit()
                 st.rerun()
-        df_inv = pd.read_sql_query("SELECT * FROM materiales", conn)
-        st.data_editor(df_inv, use_container_width=True, key="ed_inv")
+        df_f = pd.read_sql_query("SELECT * FROM finanzas", conn)
+        st.dataframe(df_f, use_container_width=True)
     idx += 1
 
-# --- MODULO: PASTOR ---
+# --- MÓDULO: INVENTARIO ---
+if rol in ["inventario", "todos"]:
+    with tabs[idx]:
+        st.subheader("📦 Inventario")
+        with st.form("f_inv"):
+            nom_i = st.text_input("Material")
+            can_i = st.number_input("Cantidad", min_value=0)
+            if st.form_submit_button("Agregar"):
+                curr.execute("INSERT INTO materiales (nombre, cantidad, estado) VALUES (?,?,?)", (nom_i, can_i, "Bueno"))
+                conn.commit()
+                st.rerun()
+        df_i = pd.read_sql_query("SELECT * FROM materiales", conn)
+        st.data_editor(df_i, use_container_width=True, key="ed_inv_final")
+    idx += 1
+
+# --- MÓDULO: PASTOR ---
 if rol == "todos":
     with tabs[idx]:
-        st.subheader("🛡️ Panel de Control Pastoral")
-        res_m = pd.read_sql_query("SELECT COUNT(*) as total FROM miembros", conn)
-        res_f = pd.read_sql_query("SELECT SUM(monto) as total FROM finanzas WHERE tipo='Ingreso'", conn)
-        c1, c2 = st.columns(2)
-        c1.metric("Total Miembros", res_m['total'][0])
-        c2.metric("Total Ingresos", f"${res_f['total'][0]:,.2f}")
-
+        st.subheader("🛡️ Panel Administrativo")
+        col1, col2 = st.columns(2)
+        res_m = pd.read_sql_query("SELECT COUNT(*) as t FROM miembros", conn)['t'][0]
+        res_i = pd.read_sql_query("SELECT SUM(monto) as t FROM finanzas WHERE tipo='Ingreso'", conn)['t'][0]
+        col1.metric("Total Miembros", res_m)
+        col2.metric("Total Ingresos", f"${res_i:,.2f}")
+        st.write("Edición Maestra de Miembros")
+        df_master = pd.read_sql_query("SELECT * FROM miembros", conn)
+        st.data_editor(df_master, use_container_width=True, key="ed_master")
