@@ -4,20 +4,20 @@ import pandas as pd
 import sqlite3
 from datetime import date
 
-# --- CONFIGURACIÓN DE PÁGINA ---
+# --- 1. CONFIGURACIÓN INICIAL ---
 st.set_page_config(page_title="Iglesia Pascua", layout="wide")
 
-# --- CONEXIÓN A BASE DE DATOS ---
+# Conexión limpia a la base de datos
 conn = sqlite3.connect("iglesia_pascua.db", check_same_thread=False)
 curr = conn.cursor()
 
-# Crear tablas si no existen (Estructura base)
+# Creación de tablas base
 curr.execute("CREATE TABLE IF NOT EXISTS miembros (id INTEGER PRIMARY KEY, nombre TEXT, telefono TEXT, direccion TEXT)")
 curr.execute("CREATE TABLE IF NOT EXISTS asistencia (id INTEGER PRIMARY KEY, miembro_id INTEGER, fecha TEXT)")
 curr.execute("CREATE TABLE IF NOT EXISTS eventos (id INTEGER PRIMARY KEY, nombre_persona TEXT, tipo TEXT, fecha_evento TEXT, telefono TEXT)")
 conn.commit()
 
-# --- LOGIN ---
+# --- 2. SISTEMA DE LOGIN ---
 st.sidebar.title("⛪ Acceso Iglesia")
 USUARIOS = {"asistencia": "1234", "todos": "admin"} 
 
@@ -26,14 +26,14 @@ pw = st.sidebar.text_input("Contraseña", type="password")
 
 if user in USUARIOS and USUARIOS[user] == pw:
     rol = user
-    st.sidebar.success(f"Conectado como: {rol}")
+    st.sidebar.success(f"Conectado: {rol}")
     if st.sidebar.button("Cerrar Sesión"):
         st.rerun()
 else:
-    st.info("Por favor, ingrese sus credenciales en el menú lateral.")
+    st.info("Ingrese credenciales en el menú lateral.")
     st.stop()
 
-# --- DEFINICIÓN DE PESTAÑAS (Sincronizadas para evitar IndexError) ---
+# --- 3. DEFINICIÓN DE PESTAÑAS (Sincronizadas) ---
 if rol == "asistencia":
     pestanas_v = ["👥 Registro Miembros", "📅 Tomar Asistencia", "📝 Informe Asistencia", "🎂 Cumpleaños"]
 else:
@@ -42,7 +42,7 @@ else:
 tabs = st.tabs(pestanas_v)
 idx = 0
 
-# --- 1. REGISTRO DE MIEMBROS ---
+# --- PESTAÑA: REGISTRO DE MIEMBROS ---
 with tabs[idx]:
     st.subheader("👥 Registro de Miembros")
     with st.form("f_mie", clear_on_submit=True):
@@ -54,44 +54,41 @@ with tabs[idx]:
                 curr.execute("INSERT INTO miembros (nombre, telefono, direccion) VALUES (?,?,?)", (nm.strip(), tm, dm))
                 conn.commit()
                 st.success(f"✅ {nm} añadido correctamente")
-                st.rerun() # Para que aparezca de inmediato en la lista de asistencia
+                st.rerun()
             else:
                 st.warning("⚠️ El nombre es obligatorio")
 idx += 1
 
-# --- 2. TOMAR ASISTENCIA (TODA LA MEMBRESÍA CON CHECKBOX) ---
+# --- PESTAÑA: TOMAR ASISTENCIA (LISTA DINÁMICA) ---
 with tabs[idx]:
-    st.subheader("📅 Pase de Lista - Asistencia Grupal")
+    st.subheader("📅 Pase de Lista")
     fec_asist = st.date_input("Fecha del Culto", format="DD/MM/YYYY", key="fecha_asist_key")
     
-    # Buscamos a todos los miembros registrados
+    # Cargar miembros para la lista de checkboxes
     df_m = pd.read_sql_query("SELECT id, nombre FROM miembros ORDER BY nombre ASC", conn)
     
     if not df_m.empty:
         with st.form("form_asistencia_grupal"):
-            st.write("Seleccione a los hermanos presentes hoy:")
+            st.write("Marque a los hermanos presentes:")
             asist_dict = {}
-            # Generamos un checkbox por cada persona en la base de datos
             for _, fila in df_m.iterrows():
+                # El ID del miembro se usa para la lógica, el Nombre para la etiqueta
                 asist_dict[fila['id']] = st.checkbox(fila['nombre'], key=f"chk_{fila['id']}")
             
-            if st.form_submit_button("💾 Guardar Asistencia del Día"):
-                total_asistentes = 0
+            if st.form_submit_button("💾 Guardar Asistencia"):
+                total = 0
                 for m_id, asistio in asist_dict.items():
                     if asistio:
                         curr.execute("INSERT INTO asistencia (miembro_id, fecha) VALUES (?,?)", (int(m_id), fec_asist))
-                        total_asistentes += 1
+                        total += 1
                 conn.commit()
-                if total_asistentes > 0:
-                    st.success(f"✅ Se registró la asistencia de {total_asistentes} personas.")
-                else:
-                    st.warning("⚠️ No seleccionaste a nadie.")
+                st.success(f"✅ Asistencia guardada: {total} presentes.")
                 st.rerun()
     else:
-        st.info("No hay miembros registrados aún. Ve a la primera pestaña.")
+        st.info("No hay miembros registrados aún.")
 idx += 1
 
-# --- 3. INFORME DE ASISTENCIA ---
+# --- PESTAÑA: INFORME ASISTENCIA ---
 with tabs[idx]:
     st.subheader("📝 Historial de Asistencia")
     query_inf = """
@@ -102,30 +99,37 @@ with tabs[idx]:
     """
     df_rep = pd.read_sql_query(query_inf, conn)
     if not df_rep.empty:
-        # Convertir fecha para que se vea bien en el reporte
         df_rep['fecha'] = pd.to_datetime(df_rep['fecha']).dt.strftime('%d/%m/%Y')
-        st.data_editor(df_rep, use_container_width=True, num_rows="dynamic", key="tabla_asist_edit")
+        st.data_editor(df_rep, use_container_width=True, key="tabla_asist_final")
     else:
-        st.info("No hay registros de asistencia en la base de datos.")
+        st.info("Sin registros de asistencia.")
 idx += 1
 
-# --- 4. CUMPLEAÑOS ---
+# --- PESTAÑA: CUMPLEAÑOS ---
 with tabs[idx]:
     st.subheader("🎂 Registro de Cumpleaños")
-    with st.form("f_cumple", clear_on_submit=True):
-        n_c = st.text_input("Nombre del Cumpleañero")
-        f_c = st.date_input("Fecha de Nacimiento", min_value=date(1900, 1, 1), format="DD/MM/YYYY")
+    with st.form("f_cumple_v2", clear_on_submit=True):
+        n_c = st.text_input("Nombre")
+        f_c = st.date_input("Fecha", min_value=date(1900, 1, 1), format="DD/MM/YYYY")
         t_c = st.text_input("WhatsApp")
-        if st.form_submit_button("💾 Guardar Cumpleaños"):
+        if st.form_submit_button("💾 Guardar"):
             if n_c:
-                curr.execute("INSERT INTO eventos (nombre_persona, tipo, fecha_evento, telefono) VALUES (?,?,?,?)", 
-                            (n_c, "Cumpleaños", f_c, t_c))
+                curr.execute("INSERT INTO eventos (nombre_persona, tipo, fecha_evento, telefono) VALUES (?,?,?,?)", (n_c, "Cumpleaños", f_c, t_c))
                 conn.commit()
-                st.success("✅ Cumpleaños guardado")
+                st.success("✅ Guardado")
                 st.rerun()
     
     st.divider()
     df_ev = pd.read_sql_query("SELECT * FROM eventos WHERE tipo='Cumpleaños'", conn)
     if not df_ev.empty:
         df_ev['fecha_evento'] = pd.to_datetime(df_ev['fecha_evento']).dt.strftime('%d/%m/%Y')
-        st.data_editor(df
+        st.data_editor(df_ev, use_container_width=True, key="tabla_cumples_final")
+idx += 1
+
+# --- PESTAÑA: ADMIN PASTOR ---
+if rol == "todos":
+    with tabs[idx]:
+        st.subheader("🛡️ Panel Administrativo")
+        st.write("Lista Maestra de Miembros")
+        df_all = pd.read_sql_query("SELECT * FROM miembros", conn)
+        st.data_editor(df_all, use_container_width=True, key="master_m")
