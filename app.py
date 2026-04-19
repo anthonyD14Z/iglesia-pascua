@@ -178,7 +178,7 @@ if rol in ["asistencia", "todos"]:
     with tabs[idx]:
            # Pestaña 1: Registro de Miembros
     with tabs[idx]:
-        st.subheader("👥 Registro de Miembros")
+    st.subheader("👥 Registro de Miembros")
         with st.form("f_mie", clear_on_submit=True):
             nm = st.text_input("Nombre Completo")
             tm = st.text_input("Teléfono")
