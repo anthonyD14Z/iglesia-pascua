@@ -176,18 +176,27 @@ if rol in ["materiales", "todos"]:
 if rol in ["asistencia", "todos"]:
     # Pestaña 1: Registro de Miembros
     with tabs[idx]:
+           # Pestaña 1: Registro de Miembros
+    with tabs[idx]:
         st.subheader("👥 Registro de Miembros")
         with st.form("f_mie", clear_on_submit=True):
             nm = st.text_input("Nombre Completo")
             tm = st.text_input("Teléfono")
             dm = st.text_input("Dirección")
             if st.form_submit_button("➕ Añadir Miembro"):
-                if nm:
-                    curr.execute("INSERT INTO miembros (nombre, telefono, direccion) VALUES (?,?,?)", (nm, tm, dm))
+                # .strip() elimina espacios accidentales al inicio o final
+                nombre_limpio = nm.strip() 
+                if nombre_limpio:
+                    curr.execute("INSERT INTO miembros (nombre, telefono, direccion) VALUES (?,?,?)", 
+                                (nombre_limpio, tm, dm))
                     conn.commit()
-                    st.success("✅ Miembro añadido")
+                    st.success(f"✅ {nombre_limpio} añadido correctamente")
+                    # ¡ESTO ES LO MÁS IMPORTANTE! Fuerza a la app a ver los cambios
+                    st.rerun() 
                 else:
-                    st.warning("⚠️ El nombre es obligatorio")
+                    st.warning("⚠️ El nombre es obligatorio para poder pasarlo a la lista de asistencia")
+
+
     idx += 1
 
     # Pestaña 2: Tomar Asistencia (Lista con Checkboxes)
