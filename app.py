@@ -201,18 +201,37 @@ if rol in ["asistencia", "todos"]:
         df_as = pd.read_sql_query("SELECT asistencia.id, miembros.nombre, asistencia.fecha FROM asistencia JOIN miembros ON asistencia.miembro_id = miembros.id", conn)
         st.data_editor(df_as, use_container_width=True, num_rows="dynamic")
     idx += 1
-    with tabs[idx]:
+with tabs[idx]:
         st.subheader("🎂 Registro de Cumpleaños")
         with st.form("f_cu", clear_on_submit=True):
             n_c = st.text_input("Cumpleañero")
-            # CORRECCIÓN DE RANGO DE FECHA
             f_c = st.date_input("Fecha de Nacimiento", min_value=date(1900, 1, 1), max_value=date.today())
             t_c = st.text_input("WhatsApp")
             if st.form_submit_button("💾 Guardar"):
-                curr.execute("INSERT INTO eventos (nombre_persona, tipo, fecha_evento, telefono) VALUES (?,?,?,?)", (n_c, "Cumpleaños", f_c, t_c))
-                conn.commit(); st.success("Registrado")
-        st.dataframe(pd.read_sql_query("SELECT * FROM eventos", conn))
-    idx += 1
+                if n_c:
+                    curr.execute("INSERT INTO eventos (nombre_persona, tipo, fecha_evento, telefono) VALUES (?,?,?,?)", (n_c, "Cumpleaños", f_c, t_c))
+                    conn.commit()
+                    st.success("Registrado")
+                    st.rerun() # Recarga para mostrar el nuevo dato abajo
+                else:
+                    st.warning("Escriba un nombre")
+
+        st.divider()
+        st.subheader("📋 Lista de Cumpleaños")
+        
+        # Leemos los datos actualizados
+        df_ev = pd.read_sql_query("SELECT * FROM eventos WHERE tipo='Cumpleaños'", conn)
+        
+        # Mostramos el editor que permite borrar filas (seleccionando y pulsando Supr o usando el icono)
+        df_ev_edit = st.data_editor(df_ev, use_container_width=True, num_rows="dynamic", key="editor_cumples")
+        
+        # Botón para confirmar si borraste algo en la tabla de arriba
+        if st.button("Confirmar Cambios / Eliminar"):
+            df_ev_edit.to_sql('eventos', conn, if_exists='replace', index=False)
+            st.success("Cambios guardados")
+            st.rerun()
+
+
 
 # 4. PASTOR / ADMIN
 if rol == "todos":
