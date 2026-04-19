@@ -176,34 +176,27 @@ if rol in ["materiales", "todos"]:
 if rol in ["asistencia", "todos"]:
     # Pestaña 1: Registro de Miembros
     with tabs[idx]:
-           # Pestaña 1: Registro de Miembros
-    with tabs[idx]:
-    st.subheader("👥 Registro de Miembros")
+        st.subheader("👥 Registro de Miembros")
         with st.form("f_mie", clear_on_submit=True):
             nm = st.text_input("Nombre Completo")
             tm = st.text_input("Teléfono")
             dm = st.text_input("Dirección")
             if st.form_submit_button("➕ Añadir Miembro"):
-                # .strip() elimina espacios accidentales al inicio o final
                 nombre_limpio = nm.strip() 
                 if nombre_limpio:
                     curr.execute("INSERT INTO miembros (nombre, telefono, direccion) VALUES (?,?,?)", 
                                 (nombre_limpio, tm, dm))
                     conn.commit()
                     st.success(f"✅ {nombre_limpio} añadido correctamente")
-                    # ¡ESTO ES LO MÁS IMPORTANTE! Fuerza a la app a ver los cambios
                     st.rerun() 
                 else:
-                    st.warning("⚠️ El nombre es obligatorio para poder pasarlo a la lista de asistencia")
-
-
+                    st.warning("⚠️ El nombre es obligatorio")
     idx += 1
 
     # Pestaña 2: Tomar Asistencia (Lista con Checkboxes)
     with tabs[idx]:
         st.subheader("📅 Pase de Lista")
         fec_asist = st.date_input("Fecha del Culto", format="DD/MM/YYYY", key="fecha_asistencia")
-        
         df_miembros = pd.read_sql_query("SELECT id, nombre FROM miembros ORDER BY nombre ASC", conn)
         
         if not df_miembros.empty:
@@ -218,7 +211,8 @@ if rol in ["asistencia", "todos"]:
                         if asistio:
                             curr.execute("INSERT INTO asistencia (miembro_id, fecha) VALUES (?,?)", (int(m_id), fec_asist))
                     conn.commit()
-                    st.success(f"✅ Asistencia registrada para el {fec_asist.strftime('%d/%m/%Y')}")
+                    st.success(f"✅ Asistencia guardada")
+                    st.rerun()
         else:
             st.info("No hay miembros registrados aún.")
     idx += 1
@@ -226,29 +220,25 @@ if rol in ["asistencia", "todos"]:
     # Pestaña 3: Informe de Asistencia
     with tabs[idx]:
         st.subheader("📝 Informe de Asistencia")
-        try:
-            query = """
-                SELECT asistencia.id, miembros.nombre, asistencia.fecha 
-                FROM asistencia 
-                JOIN miembros ON asistencia.miembro_id = miembros.id
-                ORDER BY asistencia.fecha DESC
-            """
-            df_as_repo = pd.read_sql_query(query, conn)
-            if not df_as_repo.empty:
-                df_as_repo['fecha'] = pd.to_datetime(df_as_repo['fecha']).dt.strftime('%d/%m/%Y')
-                st.data_editor(df_as_repo, use_container_width=True, num_rows="dynamic", key="tabla_asistencia")
-            else:
-                st.info("No hay registros de asistencia.")
-        except:
-            st.info("Aún no hay datos para mostrar.")
+        query_as = """
+            SELECT asistencia.id, miembros.nombre, asistencia.fecha 
+            FROM asistencia 
+            JOIN miembros ON asistencia.miembro_id = miembros.id
+            ORDER BY asistencia.fecha DESC
+        """
+        df_as_repo = pd.read_sql_query(query_as, conn)
+        if not df_as_repo.empty:
+            df_as_repo['fecha'] = pd.to_datetime(df_as_repo['fecha']).dt.strftime('%d/%m/%Y')
+            st.data_editor(df_as_repo, use_container_width=True, num_rows="dynamic", key="tabla_asistencia")
+        else:
+            st.info("No hay registros.")
     idx += 1
 
-    # Pestaña 4: Cumpleaños (Solución al error de fecha)
+    # Pestaña 4: Cumpleaños
     with tabs[idx]:
         st.subheader("🎂 Registro de Cumpleaños")
         with st.form("f_cu_final", clear_on_submit=True):
             n_c = st.text_input("Nombre del Cumpleañero")
-            # min_value en 1900 elimina el error de "Date out of range"
             f_c = st.date_input("Fecha de Nacimiento", 
                                min_value=date(1900, 1, 1), 
                                max_value=date.today(), 
@@ -268,6 +258,7 @@ if rol in ["asistencia", "todos"]:
             df_ev['fecha_evento'] = pd.to_datetime(df_ev['fecha_evento']).dt.strftime('%d/%m/%Y')
             st.data_editor(df_ev, use_container_width=True, num_rows="dynamic", key="tabla_cumples")
     idx += 1
+
 
 
 
