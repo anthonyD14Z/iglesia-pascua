@@ -201,36 +201,51 @@ if rol in ["asistencia", "todos"]:
         df_as = pd.read_sql_query("SELECT asistencia.id, miembros.nombre, asistencia.fecha FROM asistencia JOIN miembros ON asistencia.miembro_id = miembros.id", conn)
         st.data_editor(df_as, use_container_width=True, num_rows="dynamic")
     idx += 1
-with tabs[idx]:
+ with tabs[idx]:
         st.subheader("🎂 Registro de Cumpleaños")
+        
+        # Formulario que se limpia solo al guardar
         with st.form("f_cu", clear_on_submit=True):
-            n_c = st.text_input("Cumpleañero")
-            f_c = st.date_input("Fecha de Nacimiento", min_value=date(1900, 1, 1), max_value=date.today())
-            t_c = st.text_input("WhatsApp")
+            n_c = st.text_input("Nombre del Cumpleañero")
+            # Formato visual DD/MM/YYYY y rango de fecha corregido
+            f_c = st.date_input("Fecha de Nacimiento", 
+                               min_value=date(1900, 1, 1), 
+                               max_value=date.today(),
+                               format="DD/MM/YYYY") 
+            t_c = st.text_input("WhatsApp para Felicitación")
+            
             if st.form_submit_button("💾 Guardar"):
                 if n_c:
-                    curr.execute("INSERT INTO eventos (nombre_persona, tipo, fecha_evento, telefono) VALUES (?,?,?,?)", (n_c, "Cumpleaños", f_c, t_c))
+                    curr.execute("INSERT INTO eventos (nombre_persona, tipo, fecha_evento, telefono) VALUES (?,?,?,?)", 
+                                (n_c, "Cumpleaños", f_c, t_c))
                     conn.commit()
-                    st.success("Registrado")
-                    st.rerun() # Recarga para mostrar el nuevo dato abajo
+                    st.success(f"✅ ¡{n_c} registrado con éxito!")
+                    st.rerun()
                 else:
-                    st.warning("Escriba un nombre")
+                    st.warning("⚠️ Por favor, introduce el nombre.")
 
         st.divider()
-        st.subheader("📋 Lista de Cumpleaños")
+        st.subheader("📋 Lista de Cumpleaños (Selecciona y borra filas)")
         
-        # Leemos los datos actualizados
+        # Leemos los datos de la base de datos
         df_ev = pd.read_sql_query("SELECT * FROM eventos WHERE tipo='Cumpleaños'", conn)
         
-        # Mostramos el editor que permite borrar filas (seleccionando y pulsando Supr o usando el icono)
-        df_ev_edit = st.data_editor(df_ev, use_container_width=True, num_rows="dynamic", key="editor_cumples")
-        
-        # Botón para confirmar si borraste algo en la tabla de arriba
-        if st.button("Confirmar Cambios / Eliminar"):
-            df_ev_edit.to_sql('eventos', conn, if_exists='replace', index=False)
-            st.success("Cambios guardados")
-            st.rerun()
-
+        if not df_ev.empty:
+            # Convertimos la fecha al formato Día/Mes/Año para que se vea bien en la tabla
+            df_ev['fecha_evento'] = pd.to_datetime(df_ev['fecha_evento']).dt.strftime('%d/%m/%Y')
+            
+            # Editor de tabla con opción de borrar filas (num_rows="dynamic")
+            df_ev_edit = st.data_editor(df_ev, use_container_width=True, num_rows="dynamic", key="editor_cumples")
+            
+            if st.button("🗑️ Confirmar Eliminación / Cambios"):
+                # Para eliminar, el editor devuelve el dataframe sin las filas borradas
+                # Guardamos de nuevo convirtiendo las fechas al formato que entiende la base de datos
+                df_ev_edit['fecha_evento'] = pd.to_datetime(df_ev_edit['fecha_evento'], dayfirst=True).dt.strftime('%Y-%m-%d')
+                df_ev_edit.to_sql('eventos', conn, if_exists='replace', index=False)
+                st.success("✨ Base de datos actualizada correctamente.")
+                st.rerun()
+        else:
+            st.info("No hay cumpleaños registrados aún.")
 
 
 # 4. PASTOR / ADMIN
