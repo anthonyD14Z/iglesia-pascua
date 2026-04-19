@@ -2,297 +2,130 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-from datetime import date, datetime
-import base64
-import requests
-import urllib.parse
+from datetime import date
 
-# 1. CONFIGURACIÓN DE PÁGINA (DEBE SER LO PRIMERO)
-st.set_page_config(page_title="Iglesia Cristo El Salvador", page_icon="⛪", layout="wide")
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(page_title="Iglesia Pascua", layout="wide")
 
-# 2. FUNCIÓN DE TASA BCV (SISTEMA DE TRIPLE INTENTO)
-def obtener_tasa_bcv():
-    urls = [
-        "https://ve.dolarapi.com/v1/dolares/oficial",
-        "https://pydolarve.org/api/v1/dollar?page=bcv"
-    ]
-    for url in urls:
-        try:
-            response = requests.get(url, timeout=5)
-            if response.status_code == 200:
-                datos = response.json()
-                # Intenta obtener de 'promedio' o 'price' según la API que responda
-                return float(datos.get('promedio', datos.get('price', 0)))
-        except: continue
-    return None
-
-# 3. FONDO Y ESTILO CSS
-def agregar_fondo(nombre_archivo):
-    try:
-        with open(nombre_archivo, "rb") as image_file:
-            encoded_string = base64.b64encode(image_file.read()).decode()
-        st.markdown(f"""
-            <style>
-            .stApp {{
-                background-image: url("data:image/jpg;base64,{encoded_string}");
-                background-size: cover; background-position: center; background-attachment: fixed;
-            }}
-            [data-testid="stForm"], .stTabs, .stMetric, div.stAlert, [data-testid="stDataFrameResizer"] {{
-                background-color: rgba(255, 255, 255, 0.95) !important;
-                padding: 20px !important; border-radius: 15px !important;
-                box-shadow: 0 8px 16px rgba(0,0,0,0.4);
-            }}
-            label, .stMarkdown p {{
-                color: #000000 !important; 
-                font-weight: 800 !important;
-                font-size: 1.05rem !important;
-            }}
-            h1, h2, h3 {{ color: #ffffff !important; text-shadow: 2px 2px 4px #000000; }}
-            .stButton>button {{ width: 100%; border-radius: 10px; font-weight: bold; background-color: #2e7d32; color: white; }}
-            </style>
-            """, unsafe_allow_html=True)
-    except: pass
-
-agregar_fondo('1000687124.jpg')
-
-# 4. BASE DE DATOS
-conn = sqlite3.connect('iglesia_pascua_web.db', check_same_thread=False)
+# --- CONEXIÓN A BASE DE DATOS ---
+conn = sqlite3.connect("iglesia_pascua.db", check_same_thread=False)
 curr = conn.cursor()
-curr.execute("CREATE TABLE IF NOT EXISTS miembros (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, telefono TEXT, direccion TEXT)")
-curr.execute("CREATE TABLE IF NOT EXISTS finanzas (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, referencia TEXT, monto_ves REAL, tasa REAL, monto_usd REAL, fecha DATE)")
-curr.execute("CREATE TABLE IF NOT EXISTS materiales (id INTEGER PRIMARY KEY AUTOINCREMENT, donante TEXT, categoria TEXT, descripcion TEXT, fecha DATE)")
-curr.execute("CREATE TABLE IF NOT EXISTS asistencia (id INTEGER PRIMARY KEY AUTOINCREMENT, miembro_id INTEGER, fecha DATE)")
-curr.execute("CREATE TABLE IF NOT EXISTS eventos (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre_persona TEXT, tipo TEXT, fecha_evento DATE, telefono TEXT)")
+
+# Crear tablas si no existen (Estructura base)
+curr.execute("CREATE TABLE IF NOT EXISTS miembros (id INTEGER PRIMARY KEY, nombre TEXT, telefono TEXT, direccion TEXT)")
+curr.execute("CREATE TABLE IF NOT EXISTS asistencia (id INTEGER PRIMARY KEY, miembro_id INTEGER, fecha TEXT)")
+curr.execute("CREATE TABLE IF NOT EXISTS eventos (id INTEGER PRIMARY KEY, nombre_persona TEXT, tipo TEXT, fecha_evento TEXT, telefono TEXT)")
 conn.commit()
 
-# 5. SEGURIDAD Y SESIÓN
-USUARIOS = {
-    "tesorero": {"clave": "finanzas2026", "rol": "finanzas"},
-    "secretario": {"clave": "iglesia2026", "rol": "asistencia"},
-    "donaciones": {"clave": "pascua2026", "rol": "materiales"},
-    "admin": {"clave": "pastor2026", "rol": "todos"}
-}
-
-if "sesion" not in st.session_state: st.session_state.sesion = None
-if "recuperar" not in st.session_state: st.session_state.recuperar = False
-
 # --- LOGIN ---
-if st.session_state.sesion is None:
-    st.markdown("<h1 style='text-align: center;'>🔐 Acceso al Sistema</h1>", unsafe_allow_html=True)
-    col_l1, col_l2, col_l3 = st.columns([1, 1.5, 1])
-    with col_l2:
-        if not st.session_state.recuperar:
-            with st.form("login_form"):
-                u_log = st.text_input("Usuario")
-                p_log = st.text_input("Contraseña", type="password")
-                if st.form_submit_button("Entrar"):
-                    if u_log in USUARIOS and USUARIOS[u_log]["clave"] == p_log:
-                        st.session_state.sesion = USUARIOS[u_log]["rol"]
-                        st.rerun()
-                    else: st.error("Usuario o clave incorrectos")
-            if st.button("Olvidé mi contraseña"): 
-                st.session_state.recuperar = True
-                st.rerun()
-        else:
-            st.warning("Seguridad: ¿Nombre de la congregación?")
-            preg = st.text_input("Respuesta")
-            if st.button("Revelar Claves"):
-                if preg.lower() == "cristo el salvador":
-                    for k, v in USUARIOS.items(): st.code(f"{k}: {v['clave']}")
-                else: st.error("Respuesta incorrecta")
-            if st.button("Volver"): 
-                st.session_state.recuperar = False
-                st.rerun()
+st.sidebar.title("⛪ Acceso Iglesia")
+USUARIOS = {"asistencia": "1234", "todos": "admin"} 
+
+user = st.sidebar.text_input("Usuario")
+pw = st.sidebar.text_input("Contraseña", type="password")
+
+if user in USUARIOS and USUARIOS[user] == pw:
+    rol = user
+    st.sidebar.success(f"Conectado como: {rol}")
+    if st.sidebar.button("Cerrar Sesión"):
+        st.rerun()
+else:
+    st.info("Por favor, ingrese sus credenciales en el menú lateral.")
     st.stop()
 
-# --- PANEL PRINCIPAL ---
-rol = st.session_state.sesion
-st.sidebar.title(f"⛪ Menú - {rol.upper()}")
-if st.sidebar.button("🚪 Cerrar Sesión"):
-    st.session_state.sesion = None
-    st.rerun()
-
-# Definición dinámica de pestañas
-pestanas_v = []
-if rol in ["finanzas", "todos"]: pestanas_v.extend(["💰 Diezmos", "📊 Informe Tesorería"])
-if rol in ["materiales", "todos"]: pestanas_v.extend(["📦 Materiales", "📋 Informe Materiales"])
-if rol in ["asistencia", "todos"]: pestanas_v.extend(["👥 Registro Miembros", "📅 Tomar Asistencia", "📝 Informe Asistencia", "🎂 Cumpleaños"])
-if rol == "todos": pestanas_v.extend(["📡 PASTORAL", "🛠️ Ajustes"])
+# --- DEFINICIÓN DE PESTAÑAS (Sincronizadas para evitar IndexError) ---
+if rol == "asistencia":
+    pestanas_v = ["👥 Registro Miembros", "📅 Tomar Asistencia", "📝 Informe Asistencia", "🎂 Cumpleaños"]
+else:
+    pestanas_v = ["👥 Registro Miembros", "📅 Tomar Asistencia", "📝 Informe Asistencia", "🎂 Cumpleaños", "🛡️ Admin Pastor"]
 
 tabs = st.tabs(pestanas_v)
 idx = 0
 
-# --- LÓGICA DE PESTAÑAS ---
+# --- 1. REGISTRO DE MIEMBROS ---
+with tabs[idx]:
+    st.subheader("👥 Registro de Miembros")
+    with st.form("f_mie", clear_on_submit=True):
+        nm = st.text_input("Nombre Completo")
+        tm = st.text_input("Teléfono")
+        dm = st.text_input("Dirección")
+        if st.form_submit_button("➕ Añadir Miembro"):
+            if nm.strip():
+                curr.execute("INSERT INTO miembros (nombre, telefono, direccion) VALUES (?,?,?)", (nm.strip(), tm, dm))
+                conn.commit()
+                st.success(f"✅ {nm} añadido correctamente")
+                st.rerun() # Para que aparezca de inmediato en la lista de asistencia
+            else:
+                st.warning("⚠️ El nombre es obligatorio")
+idx += 1
 
-# 1. FINANZAS
-if rol in ["finanzas", "todos"]:
-    with tabs[idx]:
-        st.subheader("Entrada de Diezmos")
-        t_auto = obtener_tasa_bcv()
-        t_final = st.number_input("Tasa BCV", value=t_auto if t_auto else 55.0)
-        
-        with st.form("f_fin", clear_on_submit=True):
-            n_f = st.text_input("Nombre del Hermano/a")
-            r_f = st.text_input("Referencia")
-            mv_f = st.number_input("Monto en Bolívares (VES)", min_value=0.0)
-            if st.form_submit_button("💾 Guardar"):
-                if n_f and mv_f > 0:
-                    m_usd = mv_f / t_final
-                    curr.execute("INSERT INTO finanzas (nombre, referencia, monto_ves, tasa, monto_usd, fecha) VALUES (?,?,?,?,?,?)", 
-                                (n_f, r_f, mv_f, t_final, m_usd, date.today()))
-                    conn.commit()
-                    st.success(f"Registrado correctamente ({m_usd:.2f} USD)")
-                else: st.warning("Complete los datos")
-    idx += 1
-    with tabs[idx]:
-        st.subheader("Reporte de Finanzas")
-        df_f = pd.read_sql_query("SELECT * FROM finanzas", conn)
-        df_f_edit = st.data_editor(df_f, use_container_width=True, key="edit_fin", num_rows="dynamic")
-        if st.button("Guardar Cambios en Reporte"):
-            df_f_edit.to_sql('finanzas', conn, if_exists='replace', index=False)
-            st.success("Base de datos actualizada")
-        
-        msg = urllib.parse.quote(f"📊 Informe: Total {df_f['monto_usd'].sum():.2f} USD")
-        st.link_button("📱 Enviar por WhatsApp", f"https://wa.me/?text={msg}")
-    idx += 1
-
-# 2. MATERIALES
-if rol in ["materiales", "todos"]:
-    with tabs[idx]:
-        st.subheader("Donaciones de Materiales")
-        with st.form("f_mat", clear_on_submit=True):
-            d_m = st.text_input("Nombre del Donante")
-            desc_m = st.text_area("Descripción")
-            if st.form_submit_button("Registrar"):
-                curr.execute("INSERT INTO materiales (donante, categoria, descripcion, fecha) VALUES (?,?,?,?)", (d_m, "General", desc_m, date.today()))
-                conn.commit(); st.success("Guardado")
-    idx += 1
-    # --- 3. ASISTENCIA Y MIEMBROS ---
-if rol in ["asistencia", "todos"]:
-    # Pestaña 1: Registro de Miembros
-    with tabs[idx]:
-        st.subheader("👥 Registro de Miembros")
-        with st.form("f_mie", clear_on_submit=True):
-            nm = st.text_input("Nombre Completo")
-            tm = st.text_input("Teléfono")
-            dm = st.text_input("Dirección")
-            if st.form_submit_button("➕ Añadir Miembro"):
-                nombre_limpio = nm.strip() 
-                if nombre_limpio:
-                    curr.execute("INSERT INTO miembros (nombre, telefono, direccion) VALUES (?,?,?)", 
-                                (nombre_limpio, tm, dm))
-                    conn.commit()
-                    st.success(f"✅ {nombre_limpio} añadido correctamente")
-                    st.rerun() 
+# --- 2. TOMAR ASISTENCIA (TODA LA MEMBRESÍA CON CHECKBOX) ---
+with tabs[idx]:
+    st.subheader("📅 Pase de Lista - Asistencia Grupal")
+    fec_asist = st.date_input("Fecha del Culto", format="DD/MM/YYYY", key="fecha_asist_key")
+    
+    # Buscamos a todos los miembros registrados
+    df_m = pd.read_sql_query("SELECT id, nombre FROM miembros ORDER BY nombre ASC", conn)
+    
+    if not df_m.empty:
+        with st.form("form_asistencia_grupal"):
+            st.write("Seleccione a los hermanos presentes hoy:")
+            asist_dict = {}
+            # Generamos un checkbox por cada persona en la base de datos
+            for _, fila in df_m.iterrows():
+                asist_dict[fila['id']] = st.checkbox(fila['nombre'], key=f"chk_{fila['id']}")
+            
+            if st.form_submit_button("💾 Guardar Asistencia del Día"):
+                total_asistentes = 0
+                for m_id, asistio in asist_dict.items():
+                    if asistio:
+                        curr.execute("INSERT INTO asistencia (miembro_id, fecha) VALUES (?,?)", (int(m_id), fec_asist))
+                        total_asistentes += 1
+                conn.commit()
+                if total_asistentes > 0:
+                    st.success(f"✅ Se registró la asistencia de {total_asistentes} personas.")
                 else:
-                    st.warning("⚠️ El nombre es obligatorio")
-    idx += 1
+                    st.warning("⚠️ No seleccionaste a nadie.")
+                st.rerun()
+    else:
+        st.info("No hay miembros registrados aún. Ve a la primera pestaña.")
+idx += 1
 
-    # Pestaña 2: Tomar Asistencia (Lista con Checkboxes)
-    with tabs[idx]:
-        st.subheader("📅 Pase de Lista")
-        fec_asist = st.date_input("Fecha del Culto", format="DD/MM/YYYY", key="fecha_asist_key")
-        
-        # Consultamos los miembros
-        df_m = pd.read_sql_query("SELECT id, nombre FROM miembros ORDER BY nombre ASC", conn)
-        
-        if not df_m.empty:
-            with st.form("form_asistencia_grupal"):
-                st.write("Marque a los hermanos presentes:")
-                asist_dict = {}
-                # Aquí se generan los nombres con sus cuadritos
-                for _, fila in df_m.iterrows():
-                    asist_dict[fila['id']] = st.checkbox(fila['nombre'], key=f"chk_{fila['id']}")
-                
-                if st.form_submit_button("💾 Guardar Asistencia"):
-                    for m_id, asistio in asist_dict.items():
-                        if asistio:
-                            curr.execute("INSERT INTO asistencia (miembro_id, fecha) VALUES (?,?)", (int(m_id), fec_asist))
-                    conn.commit()
-                    st.success(f"✅ Asistencia guardada para el {fec_asist.strftime('%d/%m/%Y')}")
-                    st.rerun()
-        else:
-            st.info("No hay miembros en la base de datos. Regístrelos en la pestaña anterior.")
-    idx += 1
+# --- 3. INFORME DE ASISTENCIA ---
+with tabs[idx]:
+    st.subheader("📝 Historial de Asistencia")
+    query_inf = """
+        SELECT asistencia.id, miembros.nombre, asistencia.fecha 
+        FROM asistencia 
+        JOIN miembros ON asistencia.miembro_id = miembros.id
+        ORDER BY asistencia.fecha DESC
+    """
+    df_rep = pd.read_sql_query(query_inf, conn)
+    if not df_rep.empty:
+        # Convertir fecha para que se vea bien en el reporte
+        df_rep['fecha'] = pd.to_datetime(df_rep['fecha']).dt.strftime('%d/%m/%Y')
+        st.data_editor(df_rep, use_container_width=True, num_rows="dynamic", key="tabla_asist_edit")
+    else:
+        st.info("No hay registros de asistencia en la base de datos.")
+idx += 1
 
-    # Pestaña 3: Informe de Asistencia
-    with tabs[idx]:
-        st.subheader("📝 Informe de Asistencia")
-        query_inf = """
-            SELECT asistencia.id, miembros.nombre, asistencia.fecha 
-            FROM asistencia 
-            JOIN miembros ON asistencia.miembro_id = miembros.id
-            ORDER BY asistencia.fecha DESC
-        """
-        df_rep = pd.read_sql_query(query_inf, conn)
-        if not df_rep.empty:
-            df_rep['fecha'] = pd.to_datetime(df_rep['fecha']).dt.strftime('%d/%m/%Y')
-            st.data_editor(df_rep, use_container_width=True, num_rows="dynamic", key="tabla_asist_edit")
-        else:
-            st.info("No hay registros de asistencia.")
-    idx += 1
-
-    # Pestaña 4: Cumpleaños
-    with tabs[idx]:
-        st.subheader("🎂 Registro de Cumpleaños")
-        with st.form("f_cumple_final", clear_on_submit=True):
-            n_c = st.text_input("Nombre del Cumpleañero")
-            f_c = st.date_input("Fecha de Nacimiento", min_value=date(1900, 1, 1), format="DD/MM/YYYY")
-            t_c = st.text_input("WhatsApp")
-            if st.form_submit_button("💾 Guardar"):
-                if n_c:
-                    curr.execute("INSERT INTO eventos (nombre_persona, tipo, fecha_evento, telefono) VALUES (?,?,?,?)", 
-                                (n_c, "Cumpleaños", f_c, t_c))
-                    conn.commit()
-                    st.success("✅ Guardado")
-                    st.rerun()
-        st.divider()
-        df_ev = pd.read_sql_query("SELECT * FROM eventos WHERE tipo='Cumpleaños'", conn)
-        if not df_ev.empty:
-            df_ev['fecha_evento'] = pd.to_datetime(df_ev['fecha_evento']).dt.strftime('%d/%m/%Y')
-            st.data_editor(df_ev, use_container_width=True, num_rows="dynamic", key="tabla_cumples_edit")
-    idx += 1
-
-    # Pestaña 4: Cumpleaños
-    with tabs[idx]:
-        st.subheader("🎂 Registro de Cumpleaños")
-        with st.form("f_cu_final", clear_on_submit=True):
-            n_c = st.text_input("Nombre del Cumpleañero")
-            f_c = st.date_input("Fecha de Nacimiento", 
-                               min_value=date(1900, 1, 1), 
-                               max_value=date.today(), 
-                               format="DD/MM/YYYY")
-            t_c = st.text_input("WhatsApp")
-            if st.form_submit_button("💾 Guardar"):
-                if n_c:
-                    curr.execute("INSERT INTO eventos (nombre_persona, tipo, fecha_evento, telefono) VALUES (?,?,?,?)", 
-                                (n_c, "Cumpleaños", f_c, t_c))
-                    conn.commit()
-                    st.success("✅ Registrado")
-                    st.rerun()
-        
-        st.divider()
-        df_ev = pd.read_sql_query("SELECT * FROM eventos WHERE tipo='Cumpleaños'", conn)
-        if not df_ev.empty:
-            df_ev['fecha_evento'] = pd.to_datetime(df_ev['fecha_evento']).dt.strftime('%d/%m/%Y')
-            st.data_editor(df_ev, use_container_width=True, num_rows="dynamic", key="tabla_cumples")
-    idx += 1
-
-
-
-
-# 4. PASTOR / ADMIN
-if rol == "todos":
-    with tabs[idx]:
-        st.header("📡 RESUMEN PASTORAL")
-        c1, c2, c3 = st.columns(3)
-        ing_usd = pd.read_sql_query('SELECT SUM(monto_usd) FROM finanzas', conn).iloc[0,0] or 0
-        c1.metric("Ingresos (USD)", f"{ing_usd:.2f}")
-        c2.metric("Total Miembros", len(pd.read_sql_query("SELECT * FROM miembros", conn)))
-        c3.metric("Materiales", len(pd.read_sql_query("SELECT * FROM materiales", conn)))
-    idx += 1
-    with tabs[idx]:
-        t_sel = st.selectbox("Gestión de Tablas", ["miembros", "finanzas", "materiales", "asistencia", "eventos"])
-        df_aj = pd.read_sql_query(f"SELECT * FROM {t_sel}", conn)
-        st.data_editor(df_aj, use_container_width=True, num_rows="dynamic")
-
+# --- 4. CUMPLEAÑOS ---
+with tabs[idx]:
+    st.subheader("🎂 Registro de Cumpleaños")
+    with st.form("f_cumple", clear_on_submit=True):
+        n_c = st.text_input("Nombre del Cumpleañero")
+        f_c = st.date_input("Fecha de Nacimiento", min_value=date(1900, 1, 1), format="DD/MM/YYYY")
+        t_c = st.text_input("WhatsApp")
+        if st.form_submit_button("💾 Guardar Cumpleaños"):
+            if n_c:
+                curr.execute("INSERT INTO eventos (nombre_persona, tipo, fecha_evento, telefono) VALUES (?,?,?,?)", 
+                            (n_c, "Cumpleaños", f_c, t_c))
+                conn.commit()
+                st.success("✅ Cumpleaños guardado")
+                st.rerun()
+    
+    st.divider()
+    df_ev = pd.read_sql_query("SELECT * FROM eventos WHERE tipo='Cumpleaños'", conn)
+    if not df_ev.empty:
+        df_ev['fecha_evento'] = pd.to_datetime(df_ev['fecha_evento']).dt.strftime('%d/%m/%Y')
+        st.data_editor(df
