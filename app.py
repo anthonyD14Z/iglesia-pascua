@@ -172,107 +172,94 @@ if rol in ["materiales", "todos"]:
         st.data_editor(df_m, use_container_width=True, num_rows="dynamic")
     idx += 1
 
-# 3. ASISTENCIA Y MIEMBROS
+# --- 3. ASISTENCIA Y MIEMBROS ---
 if rol in ["asistencia", "todos"]:
+    # Pestaña 1: Registro de Miembros
     with tabs[idx]:
         st.subheader("👥 Registro de Miembros")
         with st.form("f_mie", clear_on_submit=True):
             nm = st.text_input("Nombre Completo")
             tm = st.text_input("Teléfono")
             dm = st.text_input("Dirección")
-            if st.form_submit_button("➕ Añadir"):
-                curr.execute("INSERT INTO miembros (nombre, telefono, direccion) VALUES (?,?,?)", (nm, tm, dm))
-                conn.commit(); st.success("Añadido")
+            if st.form_submit_button("➕ Añadir Miembro"):
+                if nm:
+                    curr.execute("INSERT INTO miembros (nombre, telefono, direccion) VALUES (?,?,?)", (nm, tm, dm))
+                    conn.commit()
+                    st.success("✅ Miembro añadido")
+                else:
+                    st.warning("⚠️ El nombre es obligatorio")
+    idx += 1
+
+    # Pestaña 2: Tomar Asistencia (Lista con Checkboxes)
     with tabs[idx]:
-        st.subheader("📅 Pase de Lista - Asistencia")
-        fec = st.date_input("Fecha del Culto", format="DD/MM/YYYY")
+        st.subheader("📅 Pase de Lista")
+        fec_asist = st.date_input("Fecha del Culto", format="DD/MM/YYYY", key="fecha_asistencia")
         
-        # Obtenemos la lista completa de miembros
         df_miembros = pd.read_sql_query("SELECT id, nombre FROM miembros ORDER BY nombre ASC", conn)
         
         if not df_miembros.empty:
-            st.markdown("### Marque los hermanos que asistieron:")
-            
-            # 1. Creamos un formulario para procesar todos los checks a la vez
             with st.form("formulario_asistencia_grupal"):
+                st.write("Seleccione a los asistentes:")
                 asistencias_dict = {}
-                
-                # Creamos una fila con checkbox por cada miembro
                 for _, fila in df_miembros.iterrows():
-                    # El dict guardará True o False según el check
                     asistencias_dict[fila['id']] = st.checkbox(fila['nombre'], key=f"asist_{fila['id']}")
                 
-                guardar_todo = st.form_submit_button("✅ Registrar Asistencia del Día")
-                
-                if guardar_todo:
-                    # Contador para saber cuántos se registraron
-                    contador = 0
+                if st.form_submit_button("💾 Guardar Asistencia"):
                     for m_id, asistio in asistencias_dict.items():
                         if asistio:
-                            # Insertamos solo a los que tienen el check marcado
-                            curr.execute("INSERT INTO asistencia (miembro_id, fecha) VALUES (?,?)", (int(m_id), fec))
-                            contador += 1
-                    
+                            curr.execute("INSERT INTO asistencia (miembro_id, fecha) VALUES (?,?)", (int(m_id), fec_asist))
                     conn.commit()
-                    if contador > 0:
-                        st.success(f"🎊 ¡Listo! Se registró la asistencia de {contador} personas para el día {fec.strftime('%d/%m/%Y')}.")
-                    else:
-                        st.warning("⚠️ No marcaste a nadie en la lista.")
+                    st.success(f"✅ Asistencia registrada para el {fec_asist.strftime('%d/%m/%Y')}")
         else:
-            st.info("No hay miembros registrados. Primero añade hermanos en la pestaña 'Registro Miembros'.")
-
-
+            st.info("No hay miembros registrados aún.")
     idx += 1
+
+    # Pestaña 3: Informe de Asistencia
     with tabs[idx]:
-        st.subheader("📝 Reporte de Asistencia")
-        df_as = pd.read_sql_query("SELECT asistencia.id, miembros.nombre, asistencia.fecha FROM asistencia JOIN miembros ON asistencia.miembro_id = miembros.id", conn)
-        st.data_editor(df_as, use_container_width=True, num_rows="dynamic")
+        st.subheader("📝 Informe de Asistencia")
+        try:
+            query = """
+                SELECT asistencia.id, miembros.nombre, asistencia.fecha 
+                FROM asistencia 
+                JOIN miembros ON asistencia.miembro_id = miembros.id
+                ORDER BY asistencia.fecha DESC
+            """
+            df_as_repo = pd.read_sql_query(query, conn)
+            if not df_as_repo.empty:
+                df_as_repo['fecha'] = pd.to_datetime(df_as_repo['fecha']).dt.strftime('%d/%m/%Y')
+                st.data_editor(df_as_repo, use_container_width=True, num_rows="dynamic", key="tabla_asistencia")
+            else:
+                st.info("No hay registros de asistencia.")
+        except:
+            st.info("Aún no hay datos para mostrar.")
     idx += 1
+
+    # Pestaña 4: Cumpleaños (Solución al error de fecha)
     with tabs[idx]:
         st.subheader("🎂 Registro de Cumpleaños")
-        
-        # Formulario que se limpia solo al guardar
-        with st.form("f_cu", clear_on_submit=True):
+        with st.form("f_cu_final", clear_on_submit=True):
             n_c = st.text_input("Nombre del Cumpleañero")
-            # Formato visual DD/MM/YYYY y rango de fecha corregido
+            # min_value en 1900 elimina el error de "Date out of range"
             f_c = st.date_input("Fecha de Nacimiento", 
                                min_value=date(1900, 1, 1), 
-                               max_value=date.today(),
-                               format="DD/MM/YYYY") 
-            t_c = st.text_input("WhatsApp para Felicitación")
-            
+                               max_value=date.today(), 
+                               format="DD/MM/YYYY")
+            t_c = st.text_input("WhatsApp")
             if st.form_submit_button("💾 Guardar"):
                 if n_c:
                     curr.execute("INSERT INTO eventos (nombre_persona, tipo, fecha_evento, telefono) VALUES (?,?,?,?)", 
                                 (n_c, "Cumpleaños", f_c, t_c))
                     conn.commit()
-                    st.success(f"✅ ¡{n_c} registrado con éxito!")
+                    st.success("✅ Registrado")
                     st.rerun()
-                else:
-                    st.warning("⚠️ Por favor, introduce el nombre.")
-
+        
         st.divider()
-        st.subheader("📋 Lista de Cumpleaños (Selecciona y borra filas)")
-        
-        # Leemos los datos de la base de datos
         df_ev = pd.read_sql_query("SELECT * FROM eventos WHERE tipo='Cumpleaños'", conn)
-        
         if not df_ev.empty:
-            # Convertimos la fecha al formato Día/Mes/Año para que se vea bien en la tabla
             df_ev['fecha_evento'] = pd.to_datetime(df_ev['fecha_evento']).dt.strftime('%d/%m/%Y')
-            
-            # Editor de tabla con opción de borrar filas (num_rows="dynamic")
-            df_ev_edit = st.data_editor(df_ev, use_container_width=True, num_rows="dynamic", key="editor_cumples")
-            
-            if st.button("🗑️ Confirmar Eliminación / Cambios"):
-                # Para eliminar, el editor devuelve el dataframe sin las filas borradas
-                # Guardamos de nuevo convirtiendo las fechas al formato que entiende la base de datos
-                df_ev_edit['fecha_evento'] = pd.to_datetime(df_ev_edit['fecha_evento'], dayfirst=True).dt.strftime('%Y-%m-%d')
-                df_ev_edit.to_sql('eventos', conn, if_exists='replace', index=False)
-                st.success("✨ Base de datos actualizada correctamente.")
-                st.rerun()
-        else:
-            st.info("No hay cumpleaños registrados aún.")
+            st.data_editor(df_ev, use_container_width=True, num_rows="dynamic", key="tabla_cumples")
+    idx += 1
+
 
 
 # 4. PASTOR / ADMIN
